@@ -1,58 +1,21 @@
-const NOMBRE_HOJA = 'Resultados METI';
-const MAX_INTENTOS = 2;
-
-function doPost(e) {
-  const lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(20000);
-    const datos = JSON.parse(e.postData.contents);
-    const nombre = String(datos.nombre || '').trim();
-    const correo = String(datos.correo || '').trim().toLowerCase();
-    const puntuacion = Number(datos.puntuacion);
-    if (!nombre || nombre.length > 150 ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo) || correo.length > 254 ||
-        !Number.isInteger(puntuacion) || puntuacion < 0 || puntuacion > 3) {
-      throw new Error('Datos invalidos');
-    }
-
-    const libro = SpreadsheetApp.getActiveSpreadsheet();
-    let hoja = libro.getSheetByName(NOMBRE_HOJA);
-    if (!hoja) hoja = libro.insertSheet(NOMBRE_HOJA);
-    const cabeceras = ['Fecha y hora', 'Estudiante', 'Correo', 'Puntuación',
-                       'Total posible', 'Intento', 'Mejor puntuación'];
-    hoja.getRange(1, 1, 1, cabeceras.length).setValues([cabeceras]);
-
-    const ultima = hoja.getLastRow();
-    const registros = ultima > 1 ? hoja.getRange(2, 1, ultima - 1, 7).getValues() : [];
-    let intentos = 0;
-    let mejor = -1;
-    registros.forEach((fila, i) => {
-      const correoFila = String(fila[2] || '').trim().toLowerCase();
-      if (correoFila !== correo) return;
-      intentos++;
-      const nota = Number(fila[3]);
-      if (Number.isFinite(nota)) mejor = Math.max(mejor, nota);
-      // Completa el numero de intento de registros previos.
-      if (!fila[5]) hoja.getRange(i + 2, 6).setValue(intentos);
-    });
-
-    if (intentos >= MAX_INTENTOS) {
-      return respuesta({ok: false, motivo: 'limite_de_intentos', intentos: intentos});
-    }
-
-    const textoSeguro = valor => /^[=+\-@]/.test(valor) ? "'" + valor : valor;
-    const mejorActual = Math.max(mejor, puntuacion);
-    hoja.appendRow([new Date(), textoSeguro(nombre), textoSeguro(correo),
-                    puntuacion, 3, intentos + 1, mejorActual]);
-    return respuesta({ok: true, intento: intentos + 1, mejor: mejorActual});
-  } catch (error) {
-    return respuesta({ok: false, motivo: 'error_de_registro'});
-  } finally {
-    if (lock.hasLock()) lock.releaseLock();
-  }
-}
-
-function respuesta(objeto) {
-  return ContentService.createTextOutput(JSON.stringify(objeto))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>METI | 1.8 Comprueba tu criterio</title>
+<style>
+:root{--purple:#6A1B9A;--magenta:#EC407A;--orange:#FFB74D;--ivory:#FFF7ED;--gray:#424242}*{box-sizing:border-box}body{margin:0;background:var(--ivory);color:var(--gray);font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;line-height:1.55}.wrap{max-width:800px;margin:28px auto;padding:0 16px}.hero{background:var(--purple);color:white;padding:28px;border-radius:18px 18px 0 0}.brand{font-size:14px;letter-spacing:.13em;font-weight:800}.motto{font-size:12px;opacity:.95;margin-top:2px}.hero h1{font-size:clamp(23px,4vw,34px);line-height:1.2;margin:20px 0 8px}.hero p{margin:0;color:#fff5e8}.panel{background:white;padding:28px;border-radius:0 0 18px 18px;box-shadow:0 12px 35px #6a1b9a16}.meta{display:flex;justify-content:space-between;gap:12px;font-size:14px;font-weight:700;color:var(--purple)}.progress{height:8px;background:#efe5f2;border-radius:9px;overflow:hidden;margin:15px 0 25px}.bar{height:100%;width:0;background:var(--magenta);transition:width .25s}.question{font-size:20px;font-weight:750;margin:0 0 20px}.option{display:flex;align-items:flex-start;gap:13px;padding:15px;margin:10px 0;border:2px solid #e7e1e9;border-radius:12px;cursor:pointer}.option:has(input:checked){border-color:var(--purple);background:#f8effc}.option input{margin-top:5px;accent-color:var(--purple);width:18px;height:18px;flex:none}.option.locked{cursor:default}.option.correct{border-color:#27845a;background:#edf9f2}.option.incorrect{border-color:#c64d63;background:#fff0f2}.feedback{margin-top:20px;padding:17px;border-radius:12px;background:#f5eff9;border-left:5px solid var(--magenta)}.feedback strong{color:var(--purple)}button{appearance:none;background:var(--purple);color:white;border:0;border-radius:11px;padding:14px 22px;font-size:16px;font-weight:700;cursor:pointer;margin-top:22px;min-height:48px}button:disabled{opacity:.45;cursor:not-allowed}button:focus-visible,input:focus-visible{outline:3px solid var(--orange);outline-offset:3px}.hidden{display:none!important}.result{text-align:center;padding:16px 0}.result .score{font-size:58px;font-weight:850;color:var(--purple)}.note{font-size:13px;color:#666;margin-top:22px;border-top:1px solid #eee;padding-top:14px}@media(max-width:560px){.wrap{margin:0;padding:0}.hero,.panel{border-radius:0}.hero{padding:24px 20px}.panel{padding:23px 18px}.question{font-size:18px}}@media print{button{display:none}}
+</style>
+</head><body><main class="wrap"><header class="hero"><div class="brand">METI DEFLT</div><div class="motto">EDUCACIÓN QUE TRANSFORMA</div><h1>1.8 Comprueba tu criterio</h1><p>Uso crítico y responsable de la inteligencia artificial</p></header><section class="panel"><div id="quiz"><div class="meta"><span id="counter">Pregunta 1 de 3</span><span id="points">0 / 3 puntos</span></div><div class="progress" aria-hidden="true"><div class="bar" id="bar"></div></div><h2 class="question" id="question"></h2><form id="options" aria-label="Alternativas de respuesta"></form><div id="feedback" class="feedback hidden" role="status" aria-live="polite"></div><button id="check" disabled>Comprobar respuesta</button><button id="next" class="hidden">Siguiente pregunta →</button></div><div id="end" class="result hidden" aria-live="polite"><h2>Evaluación finalizada</h2><div id="score" class="score"></div><p id="summary"></p></div><p class="note">Actividad formativa autocorregible. Esta versión publicada en GitHub Pages no envía calificaciones automáticamente a Canvas Lite.</p></section></main><script>
+'use strict';
+const questions=[
+{q:'Antes de comenzar una búsqueda sobre un tema nuevo, un posgradista pide a la IA que sugiera sinónimos y conceptos relacionados. Después verificará los términos y realizará la búsqueda en bases académicas. ¿Cómo valorarías ese uso?',options:['Es un apoyo inicial pertinente.','Es equivalente a una búsqueda bibliográfica completa.','Sustituye la necesidad de fuentes académicas.','Convierte la respuesta de IA en evidencia.'],correct:0,feedback:'La IA puede ayudar a organizar el punto de partida. La evidencia debe provenir de fuentes verificadas.'},
+{q:'Una respuesta de IA cita una guía y resume una recomendación, pero el estudiante todavía no ha abierto la publicación original. ¿Cuál es el estado más adecuado de esa información?',options:['Evidencia confirmada.','Información provisional que requiere verificación.','Recomendación clínica validada.','Fuente primaria suficiente.'],correct:1,feedback:'La mención de una fuente no confirma que exista ni que respalde exactamente la afirmación.'},
+{q:'¿Qué responsabilidad no debe delegarse a la IA en una actividad académica?',options:['Proponer términos iniciales de búsqueda.','Organizar una lista de preguntas por explorar.','Decidir qué información verificada se incorpora finalmente y asumir responsabilidad por ella.','Sugerir subtemas que podrían investigarse.'],correct:2,feedback:'La IA puede apoyar la búsqueda, organización y exploración de información, pero la selección final de evidencias, su interpretación y la responsabilidad académica corresponden al estudiante.'}
+];
+let index=0,score=0,locked=false;const $=id=>document.getElementById(id);const letters=['A','B','C','D'];
+function render(){locked=false;const item=questions[index];$('counter').textContent=`Pregunta ${index+1} de ${questions.length}`;$('points').textContent=`${score} / 3 puntos`;$('bar').style.width=`${index/questions.length*100}%`;$('question').textContent=item.q;$('options').replaceChildren();item.options.forEach((label,i)=>{const el=document.createElement('label');el.className='option';const radio=document.createElement('input');radio.type='radio';radio.name='answer';radio.value=i;radio.addEventListener('change',()=>{$('check').disabled=false});const span=document.createElement('span');span.textContent=`${letters[i]}. ${label}`;el.append(radio,span);$('options').append(el)});$('feedback').classList.add('hidden');$('feedback').replaceChildren();$('check').disabled=true;$('check').classList.remove('hidden');$('next').classList.add('hidden');$('next').textContent=index===2?'Ver resultado final →':'Siguiente pregunta →'}
+$('check').addEventListener('click',()=>{if(locked)return;const chosen=$('options').querySelector('input:checked');if(!chosen)return;locked=true;const selected=Number(chosen.value),item=questions[index],correct=selected===item.correct;if(correct)score++;$('points').textContent=`${score} / 3 puntos`;$('options').querySelectorAll('input').forEach(x=>x.disabled=true);$('options').querySelectorAll('.option').forEach((el,i)=>{el.classList.add('locked');if(i===item.correct)el.classList.add('correct');else if(i===selected)el.classList.add('incorrect')});const strong=document.createElement('strong');strong.textContent=correct?'¡Respuesta correcta! +1 punto':'Respuesta incorrecta · 0 puntos';const p=document.createElement('p');p.textContent=`Respuesta correcta: ${letters[item.correct]}. ${item.options[item.correct]}`;const explain=document.createElement('p');explain.textContent=item.feedback;$('feedback').append(strong,p,explain);$('feedback').classList.remove('hidden');$('check').classList.add('hidden');$('next').classList.remove('hidden')});
+$('next').addEventListener('click',()=>{index++;if(index<questions.length){render()}else{$('quiz').classList.add('hidden');$('end').classList.remove('hidden');$('score').textContent=`${score} / 3`;$('summary').textContent=score===3?'¡Excelente! Has demostrado criterio en el uso académico de la IA.':'Has completado la evaluación. Revisa las explicaciones para fortalecer tu criterio.'}});
+render();
+</script></body></html>
